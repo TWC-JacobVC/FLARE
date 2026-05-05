@@ -1,2 +1,324 @@
 # FLARE
 FIre-weather Leveraging Ai Real-time Engine
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fire Weather Tool - V0.14 Baseline</title>
+    
+    <style>
+        :root {
+            --bg-color: #f4f4f9;
+            --bg-image: url('https://yale-threesixty.transforms.svdcdn.com/production/Bondurant-Fire_NIFC.jpg?w=1000&auto=compress%2Cformat&fit=clip&dm=1765918540&s=bfde05abd70fe9c099d0ea10227b4a5b');
+            --box-bg: rgba(255, 255, 255, 0.97); 
+            --accent-color: #c0392b; 
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0; padding: 20px; min-height: 100vh;
+            background-image: var(--bg-image);
+            background-size: cover; background-position: center; background-attachment: fixed;
+            background-repeat: no-repeat;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* --- Header & Branding --- */
+        .brand-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            margin-top: 10px;
+            z-index: 10;
+        }
+
+        .flare-logo {
+            max-width: 280px;
+            height: auto;
+            margin-bottom: 15px;
+            filter: drop-shadow(0px 8px 15px rgba(0,0,0,0.6)); 
+        }
+
+        .search-container { 
+            margin: 10px 0 20px 0; 
+            width: 100%; 
+            max-width: 800px;
+        }
+
+        #locationSearch {
+            width: 100%;
+            padding: 15px; font-size: 18px; border-radius: 8px;
+            border: 2px solid var(--accent-color); 
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        .location-banner {
+            display: none;
+            width: 100%; max-width: 1250px; margin: 0 0 20px 0;
+            color: #fffaf0; 
+            font-weight: bold; text-shadow: 2px 2px 5px rgba(0,0,0,1);
+            font-size: 1.3rem;
+            align-items: center; justify-content: center;
+            background: rgba(74, 21, 16, 0.85); 
+            padding: 12px;
+            border-radius: 8px;
+            border: 2px solid var(--accent-color);
+            box-sizing: border-box;
+        }
+
+        /* --- Dashboard Layout --- */
+        .obs-container, .discussion-container, .forecast-box {
+            background: var(--box-bg);
+            border-top: 6px solid var(--accent-color);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3); border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        .obs-container { 
+            display: none; margin-bottom: 20px; width: 100%; max-width: 1250px; padding: 20px;
+        }
+
+        .dashboard { 
+            display: none; grid-template-columns: repeat(3, 1fr); gap: 20px; width: 100%;
+            max-width: 1250px; 
+        }
+
+        .forecast-box { padding: 15px; }
+
+        .forecast-box h3, .obs-container h3, .discussion-container h3 {
+            margin: 0 0 15px 0;
+            font-size: 0.9rem; color: #444;
+            border-bottom: 1px solid #eee; padding-bottom: 8px; text-transform: uppercase;
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0; border-bottom: 1px dashed #eee;
+            font-family: 'Courier New', Courier, monospace; font-size: 0.9rem; font-weight: bold;
+        }
+        
+        .label { color: #555; }
+        .value { color: #000; text-align: right; }
+
+        .discussion-container { 
+            display: none; margin-top: 20px; width: 100%; max-width: 1250px; padding: 20px;
+            margin-bottom: 40px; 
+        }
+        
+        .narrative-text { 
+            font-family: 'Segoe UI', sans-serif; line-height: 1.6; font-size: 1.05rem;
+            color: #222; white-space: pre-line; margin-bottom: 10px; 
+        }
+    </style>
+</head>
+<body>
+
+    <header class="brand-header">
+        <img src="ChatGPT Image Apr 17, 2026, 01_06_23 PM.jpg" alt="FLARE Logo" class="flare-logo">
+        <div class="search-container">
+            <input type="text" id="locationSearch" placeholder="(ICAO, Latitude/Longitude, Zip Code, &quot;City/State&quot;)">
+        </div>
+        <div class="location-banner" id="locationBanner">
+            📍 <span id="locationText">Searching...</span>
+        </div>
+    </header>
+
+    <div class="obs-container" id="obsBox">
+        <h3>Current Weather Observations</h3>
+        <div id="obsContent"></div>
+    </div>
+
+    <div class="dashboard" id="mainDashboard">
+        <div class="forecast-box" id="day1"><h3>Day 1 Forecast</h3><div id="d1-content"></div></div>
+        <div class="forecast-box" id="day2"><h3>Day 2 Forecast</h3><div id="d2-content"></div></div>
+        <div class="forecast-box" id="day3"><h3>Day 3 Forecast</h3><div id="d3-content"></div></div>
+    </div>
+
+    <div class="discussion-container" id="discussionBox">
+        <div id="discussionContent"></div>
+    </div>
+
+    <script>
+        // --- Global Selectors ---
+        const searchInput = document.getElementById('locationSearch');
+        const dashboard = document.getElementById('mainDashboard');
+        const discussion = document.getElementById('discussionBox');
+        const obsBox = document.getElementById('obsBox');
+        const banner = document.getElementById('locationBanner');
+
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') resolveInput(searchInput.value.trim());
+        });
+
+        // --- Sky Coverage ---
+        function getSkyPercentage(forecast) {
+            const f = (forecast || "").toLowerCase();
+            let basePercent = "N/A";
+            
+            if (f.includes("overcast") || f.includes("cloudy")) basePercent = "90-100%";
+            else if (f.includes("mostly cloudy")) basePercent = "70-90%";
+            else if (f.includes("partly cloudy") || f.includes("partly sunny")) basePercent = "30-60%";
+            else if (f.includes("mostly sunny") || f.includes("mostly clear")) basePercent = "10-25%";
+            else if (f.includes("clear") || f.includes("sunny")) basePercent = "0-5%";
+
+            const isLowProb = f.includes("slight chance") || f.includes("chance") || f.includes("possible");
+            const isHighProb = f.includes("likely") || f.includes("occasional") || f.includes("periods of");
+            const hasPrecip = f.includes("showers") || f.includes("thunderstorms") || f.includes("rain") || f.includes("snow");
+            
+            if (hasPrecip && isHighProb) return "80-100%";
+            if (hasPrecip && !isLowProb) return "60-80%"; 
+            
+            return basePercent !== "N/A" ? basePercent : (hasPrecip ? "75%" : "N/A");
+        }
+
+        // --- Data Ingest & Handshake (API Calls) ---
+        async function resolveInput(input) {
+            try {
+                // Geo-location fetch
+                const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${input}&countrycodes=us`);
+                const geoData = await geoRes.json();
+                if(geoData.length === 0) throw new Error("Location not found");
+                
+                const { lat, lon } = geoData[0];
+                const pointsData = await (await fetch(`https://api.weather.gov/points/${lat},${lon}`)).json();
+                
+                const office = pointsData.properties.gridId;
+                const zone = pointsData.properties.fireWeatherZone.split('/').pop();
+                const city = pointsData.properties.relativeLocation.properties.city.toUpperCase();
+                const state = pointsData.properties.relativeLocation.properties.state;
+
+                banner.style.display = 'flex';
+                document.getElementById('locationText').innerText = ` ${city}, ${state} | FIRE ZONE: ${zone} | WFO: ${office}`;
+
+                // --- Discussion Fetching ---
+                let officialNarrative = "";
+                try {
+                    const productData = await (await fetch(`https://api.weather.gov/products/types/FWF/locations/${office}`)).json();
+                    if (productData['@graph']?.length > 0) {
+                        const fwfContent = await (await fetch(productData['@graph'][0]['@id'])).json();
+                        const rawText = fwfContent.productText;
+                        const discMatch = rawText.match(/\.DISCUSSION\.*([\s\S]*?)\n\n/i) || 
+                                        rawText.match(/\.DISCUSSION\.{1,3}([\s\S]*?)(?:\n\n|&&)/i) ||
+                                        rawText.match(/DISCUSSION:([\s\S]*?)\n\n/i) ||
+                                        rawText.match(/\.SYNOPSIS\.*([\s\S]*?)\n\n/i) ||
+                                        rawText.match(/FIRE WEATHER PLANNING FORECAST([\s\S]*?)\n[A-Z]{2}Z[0-9]{3}/i);
+                        if (discMatch) officialNarrative = discMatch[1].trim().replace(/&&/g, '').replace(/^\.+/g, '');
+                    }
+                } catch (e) { 
+                    console.error("FWF Fetch Error", e);
+                }
+
+                // Weather data fetching
+                const stationsData = await (await fetch(pointsData.properties.observationStations)).json();
+                const obsData = await (await fetch(`${stationsData.features[0].id}/observations/latest`)).json();
+                
+                const forecastData = await (await fetch(pointsData.properties.forecast)).json();
+                const hourlyData = await (await fetch(pointsData.properties.forecastHourly)).json();
+
+                // Fallback for missing/stale FWF narratives
+                if (!officialNarrative || officialNarrative.length < 10) {
+                    const [d1, n1] = forecastData.properties.periods;
+                    officialNarrative = ` *This is currently under development* Expect today in ${city} a High of ${d1.temperature}°F, with winds of ${d1.windSpeed} ${d1.windDirection}, and sky conditions of ${d1.shortForecast.toLowerCase()}.\nTonight the Low will be ${n1.temperature}°F. Further weather discussion can be found in WFO ${office} AFD.`;
+                }
+
+                updateUI(
+                    forecastData.properties.periods, 
+                    hourlyData.properties.periods, 
+                    office, 
+                    obsData.properties, 
+                    stationsData.features[0].properties.name, 
+                    officialNarrative
+                );
+
+            } catch (err) { 
+                alert("ERROR: " + err.message); 
+            }
+        }
+
+        // --- UI Component Rendering ---
+        function updateUI(periods, hourlyPeriods, office, obs, stationName, narrative) {
+            dashboard.style.display = 'grid';
+            discussion.style.display = 'block';
+            obsBox.style.display = 'block';
+
+            const tempF = obs.temperature.value ? (obs.temperature.value * 9/5 + 32).toFixed(1) : "N/A";
+            const windSpeedMph = obs.windSpeed.value ? (obs.windSpeed.value * 2.237).toFixed(1) : "N/A";
+            const windDir = obs.windDirection.value !== null ? `${obs.windDirection.value}°` : "N/A";
+            const currentRh = obs.relativeHumidity.value ? obs.relativeHumidity.value.toFixed(0) : "N/A";
+
+            document.getElementById('obsContent').innerHTML = `
+                <div class="data-point">
+                    <p style="margin-top:0;"><b>STATION:</b> ${stationName}</p>
+                    <div class="data-row"><span class="label">CURRENT TEMP:</span><span class="value">${tempF}°F</span></div>
+                    <div class="data-row"><span class="label">WIND:</span><span class="value">${windSpeedMph} MPH FROM ${windDir}</span></div>
+                    <div class="data-row"><span class="label">HUMIDITY:</span><span class="value">${currentRh}%</span></div>
+                </div>
+            `;
+
+            let startIndex = periods[0].isDaytime ? 0 : 1;
+
+            for (let i = 0; i < 3; i++) {
+                const day = periods[startIndex + (i * 2)];
+                const night = periods[startIndex + (i * 2) + 1];
+
+                if (day && night) {
+                    const dateObj = new Date(day.startTime);
+                    const dateString = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+                    
+                    // --- RH CALCULATION LOGIC ---
+                    const dayStart = new Date(day.startTime);
+                    const nightEnd = new Date(night.endTime);
+
+                    // Filter hourly data for the 24-hour operational window
+                    const dailyHourlyData = hourlyPeriods.filter(hp => {
+                        const hpTime = new Date(hp.startTime);
+                        return hpTime >= dayStart && hpTime < nightEnd;
+                    });
+
+                    let maxRh = "N/A";
+                    let minRh = "N/A";
+
+                    if (dailyHourlyData.length > 0) {
+                        const rhValues = dailyHourlyData
+                            .map(hp => hp.relativeHumidity.value)
+                            .filter(val => val !== null);
+                            
+                        if (rhValues.length > 0) {
+                            maxRh = Math.max(...rhValues);
+                            minRh = Math.min(...rhValues);
+                        }
+                    }
+
+                    document.querySelector(`#day${i+1} h3`).innerText = `Day ${i+1}: ${dateString}`;
+                    document.getElementById(`d${i+1}-content`).innerHTML = `
+                        <div class="data-row"><span class="label">MAX TEMP:</span><span class="value">${day.temperature}°F</span></div>
+                        <div class="data-row"><span class="label">MIN TEMP:</span><span class="value">${night.temperature}°F</span></div>
+                        <div class="data-row"><span class="label">WIND:</span><span class="value">${day.windSpeed} ${day.windDirection}</span></div>
+                        <div class="data-row"><span class="label">SKY COVER:</span><span class="value">${getSkyPercentage(day.shortForecast)} (${day.shortForecast})</span></div>
+                        <div class="data-row"><span class="label">RH (MAX/MIN):</span><span class="value">${maxRh}% / ${minRh}%</span></div>
+                        <div class="data-row"><span class="label">FUELS:</span><span class="value" style="color:#c0392b">PENDING</span></div>
+                    `;
+                }
+            }
+
+            document.getElementById('discussionContent').innerHTML = `
+                <div style="margin-bottom: 15px; border-bottom: 1px solid #ddd; padding-bottom: 10px;">
+                    <h4 style="margin: 0 0 10px 0; color: #c0392b; text-transform: uppercase;">Weather Discussion</h4>
+                    <div class="narrative-text">${narrative}</div>
+                </div>
+                <div>
+                    <h4 style="margin: 0 0 5px 0; color: #c0392b; text-transform: uppercase;">Fuels Discussion</h4>
+                    <p style="margin: 0; font-style: italic; color: #555;">Fuel moisture and ERC data integration to come in future update.</p>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
